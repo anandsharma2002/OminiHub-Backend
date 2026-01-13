@@ -1,0 +1,13 @@
+# Defaults
+node_modules
+.env
+.DS_Store
+npm-debug.log
+yarn-error.log
+
+# Testing
+coverage/
+
+# Production
+build/
+dist/
