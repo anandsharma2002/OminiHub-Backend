@@ -1,0 +1,13 @@
+Signup Error: E11000 duplicate key error collection: omnihub.users index: username_1 dup key: { username: "testuser" }
+Stack: MongoServerError: E11000 duplicate key error collection: omnihub.users index: username_1 dup key: { username: "testuser" }
+    at InsertOneOperation.handleOk (D:\D\study\Projects\OmniHub\OminiHub-Backend\node_modules\mongodb\lib\operations\insert.js:51:19)
+    at tryOperation (D:\D\study\Projects\OmniHub\OminiHub-Backend\node_modules\mongodb\lib\operations\execute_operation.js:216:34)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async executeOperation (D:\D\study\Projects\OmniHub\OminiHub-Backend\node_modules\mongodb\lib\operations\execute_operation.js:80:16)
+    at async Collection.insertOne (D:\D\study\Projects\OmniHub\OminiHub-Backend\node_modules\mongodb\lib\collection.js:154:16)
+    at async model.$__save (D:\D\study\Projects\OmniHub\OminiHub-Backend\node_modules\mongoose\lib\model.js:398:16)
+    at async model.save (D:\D\study\Projects\OmniHub\OminiHub-Backend\node_modules\mongoose\lib\model.js:609:5)
+    at async D:\D\study\Projects\OmniHub\OminiHub-Backend\node_modules\mongoose\lib\model.js:2714:9
+    at async Promise.all (index 0)
+    at async Function.create (D:\D\study\Projects\OmniHub\OminiHub-Backend\node_modules\mongoose\lib\model.js:2699:11)
+{"errorLabelSet":{},"errorResponse":{"index":0,"code":11000,"errmsg":"E11000 duplicate key error collection: omnihub.users index: username_1 dup key: { username: \"testuser\" }","keyPattern":{"username":1},"keyValue":{"username":"testuser"}},"index":0,"code":11000,"keyPattern":{"username":1},"keyValue":{"username":"testuser"}}

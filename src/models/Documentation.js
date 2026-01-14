@@ -1,24 +1,37 @@
 const mongoose = require('mongoose');
 
 const documentationSchema = new mongoose.Schema({
-    title: {
+    name: {
         type: String,
-        required: true,
+        required: [true, 'Please provide a document name'],
         trim: true,
-    },
-    image: {
-        type: String, // URL from Supabase
     },
     description: {
         type: String,
+        trim: true,
     },
-    project: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'Project',
+    privacy: {
+        type: String,
+        enum: ['public', 'private'],
+        default: 'private',
     },
-    author: {
+    filePath: {
+        type: String,
+        required: true, // Supabase storage path
+    },
+    fileType: {
+        type: String,
+    },
+    fileSize: {
+        type: Number, // in bytes
+    },
+    downloadUrl: {
+        type: String,
+    },
+    user: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
+        required: true,
     },
 }, {
     timestamps: true,

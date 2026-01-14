@@ -42,9 +42,11 @@ const sendTokenResponse = (user, statusCode, res) => {
 // @access  Public
 exports.signup = async (req, res, next) => {
     try {
-        const { username, email, password, role } = req.body;
+        const { firstName, lastName, username, email, password, role } = req.body;
 
         const user = await User.create({
+            firstName,
+            lastName,
             username,
             email,
             password,
@@ -53,6 +55,8 @@ exports.signup = async (req, res, next) => {
 
         sendTokenResponse(user, 201, res);
     } catch (error) {
+        const fs = require('fs');
+        fs.writeFileSync('server-error.log', `Signup Error: ${error.message}\nStack: ${error.stack}\n${JSON.stringify(error)}\n`);
         if (error.code === 11000) {
             return res.status(400).json({ status: 'fail', message: 'Email or Username already exists' });
         }

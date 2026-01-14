@@ -1,22 +1,37 @@
-const { Pool } = require('pg');
+const { createClient } = require('@supabase/supabase-js');
 
-let supabasePool;
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_KEY;
 
-try {
-    if (process.env.SUPABASE_DB_URL) {
-        supabasePool = new Pool({
-            connectionString: process.env.SUPABASE_DB_URL,
-        });
+let supabase;
 
-        // Test connection on startup (optional, doing it in test route mostly)
-        supabasePool.on('error', (err, client) => {
-            console.error('Unexpected error on idle Supabase client', err);
-        });
-    } else {
-        console.warn('SUPABASE_DB_URL not found in environment variables.');
+if (!supabaseUrl || !supabaseKey) {
+    console.error('⚠️ Supabase Config Missing: SUPABASE_URL or SUPABASE_KEY not found in .env');
+    // Mock Supabase client to prevent crash
+    supabase = {
+        storage: {
+            from: () => ({
+                upload: async () => ({ error: { message: 'Supabase not configured' } }),
+                remove: async () => ({ error: { message: 'Supabase not configured' } }),
+                createSignedUrl: async () => ({ error: { message: 'Supabase not configured' } })
+            })
+        }
+    };
+} else {
+    try {
+        supabase = createClient(supabaseUrl, supabaseKey);
+    } catch (error) {
+        console.error('⚠️ Supabase Client Init Error:', error.message);
+        supabase = {
+            storage: {
+                from: () => ({
+                    upload: async () => ({ error: { message: 'Supabase Client Error' } }),
+                    remove: async () => ({ error: { message: 'Supabase Client Error' } }),
+                    createSignedUrl: async () => ({ error: { message: 'Supabase Client Error' } })
+                })
+            }
+        };
     }
-} catch (error) {
-    console.error('Supabase Pool Initialization Error:', error);
 }
 
-module.exports = supabasePool;
+module.exports = supabase;

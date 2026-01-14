@@ -4,6 +4,8 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const testRoutes = require('./routes/test.routes');
 const authRoutes = require('./routes/auth.routes');
+const docRoutes = require('./routes/doc.routes');
+const userRoutes = require('./routes/user.routes');
 
 const app = express();
 
@@ -16,6 +18,8 @@ app.use(express.json());
 // Routes
 app.use('/api', testRoutes);
 app.use('/api/auth', authRoutes);
+app.use('/api/docs', docRoutes);
+app.use('/api/users', userRoutes);
 
 // 404 Handler
 app.use((req, res, next) => {
