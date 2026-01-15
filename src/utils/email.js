@@ -1,25 +1,26 @@
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
+
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 const sendEmail = async (options) => {
-    const transporter = nodemailer.createTransport({
-        service: 'gmail',
-        auth: {
-            user: process.env.SMTP_EMAIL,
-            pass: process.env.SMTP_PASSWORD,
-        },
-    });
+    try {
+        const { data, error } = await resend.emails.send({
+            from: 'OmniHub <onboarding@resend.dev>',
+            to: [options.email],
+            subject: options.subject,
+            html: options.message,
+        });
 
-    const message = {
-        from: `${process.env.FROM_NAME} <${process.env.FROM_EMAIL}>`,
-        to: options.email,
-        subject: options.subject,
-        html: options.message, // Use html for better formatting
-        // text: options.message, // Fallback
-    };
+        if (error) {
+            console.error('Resend API Error:', error);
+            throw new Error(error.message);
+        }
 
-    const info = await transporter.sendMail(message);
-
-    console.log('Message sent: %s', info.messageId);
+        console.log('Email sent successfully:', data);
+    } catch (err) {
+        console.error('Email send failed:', err);
+        throw err;
+    }
 };
 
 module.exports = sendEmail;
