@@ -58,6 +58,18 @@ const userSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Project',
     }],
+    isVerified: {
+        type: Boolean,
+        default: false,
+    },
+    verificationCode: {
+        type: String,
+        select: false,
+    },
+    verificationCodeExpire: {
+        type: Date,
+        select: false,
+    },
 }, {
     timestamps: true,
 });
@@ -68,6 +80,7 @@ userSchema.pre('save', async function () {
         return;
     }
     const salt = await bcrypt.genSalt(10);
+    console.log('Hashing password for user...');
     this.password = await bcrypt.hash(this.password, salt);
 });
 

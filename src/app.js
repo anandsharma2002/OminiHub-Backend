@@ -12,7 +12,7 @@ const app = express();
 // Middleware
 app.use(helmet());
 app.use(cors({
-    origin: ['https://anandsharma2002.github.io', 'http://localhost:5173'],
+    origin: true, // Allow any origin in dev
     credentials: true
 }));
 app.use(morgan('dev'));

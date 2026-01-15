@@ -1,5 +1,7 @@
 const User = require('../models/User');
 const jwt = require('jsonwebtoken');
+const sendEmail = require('../utils/email');
+const crypto = require('crypto');
 
 // Generate JWT Token
 const signToken = (id) => {
@@ -44,19 +46,46 @@ exports.signup = async (req, res, next) => {
     try {
         const { firstName, lastName, username, email, password, role } = req.body;
 
+        const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+        const verificationCodeExpire = Date.now() + 10 * 60 * 1000; // 10 mins
+
         const user = await User.create({
             firstName,
             lastName,
             username,
             email,
             password,
-            role, // Optional: In prod, force role to be 'User' for public signup
+            role,
+            verificationCode,
+            verificationCodeExpire,
+            isVerified: false
         });
 
-        sendTokenResponse(user, 201, res);
+        const message = `
+        <h1>Email Verification</h1>
+        <p>Your verification code is: <strong>${verificationCode}</strong></p>
+        <p>This code will expire in 10 minutes.</p>
+        `;
+
+        try {
+            await sendEmail({
+                email: user.email,
+                subject: 'OmniHub Email Verification',
+                message,
+            });
+
+            res.status(200).json({
+                status: 'success',
+                message: 'Verification code sent to email',
+            });
+        } catch (emailError) {
+            // Rollback user creation if email fails (optional but good practice)
+            // await User.findByIdAndDelete(user._id); 
+            // keeping it simple for now as requested user might want to resend
+            return next(new Error('Email could not be sent'));
+        }
+
     } catch (error) {
-        const fs = require('fs');
-        fs.writeFileSync('server-error.log', `Signup Error: ${error.message}\nStack: ${error.stack}\n${JSON.stringify(error)}\n`);
         if (error.code === 11000) {
             return res.status(400).json({ status: 'fail', message: 'Email or Username already exists' });
         }
@@ -69,17 +98,35 @@ exports.signup = async (req, res, next) => {
 // @access  Public
 exports.login = async (req, res, next) => {
     try {
-        const { email, password } = req.body;
+        const { email, username, password } = req.body;
 
-        // Validate email & password
-        if (!email || !password) {
-            return res.status(400).json({ status: 'fail', message: 'Please provide email and password' });
+        // Support email, username, or generic 'identifier' field
+        const identifier = email || username || req.body.identifier;
+
+        // Validate input
+        if (!identifier || !password) {
+            return res.status(400).json({ status: 'fail', message: 'Please provide email/username and password' });
         }
 
-        // Check for user
-        const user = await User.findOne({ email }).select('+password');
+        const identifierLower = identifier.toLowerCase();
+        console.log(`Login attempt for: ${identifierLower}`);
+
+        // Check for user (Email or Username)
+        // Check if input looks like an email
+        const isEmail = /^\S+@\S+\.\S+$/.test(identifier);
+
+        let query;
+        if (isEmail) {
+            query = { email: identifierLower };
+        } else {
+            // Case-insensitive username search
+            query = { username: { $regex: new RegExp(`^${identifier}$`, 'i') } };
+        }
+
+        const user = await User.findOne(query).select('+password');
 
         if (!user) {
+            console.log('Login failed: User not found');
             return res.status(401).json({ status: 'fail', message: 'Invalid credentials' });
         }
 
@@ -87,9 +134,16 @@ exports.login = async (req, res, next) => {
         const isMatch = await user.matchPassword(password);
 
         if (!isMatch) {
+            console.log('Login failed: Password incorrect');
             return res.status(401).json({ status: 'fail', message: 'Invalid credentials' });
         }
 
+        if (!user.isVerified) {
+            console.log('Login failed: User not verified');
+            return res.status(401).json({ status: 'fail', message: 'Please verify your email to login' });
+        }
+
+        console.log('Login successful');
         sendTokenResponse(user, 200, res);
     } catch (error) {
         next(error);
@@ -108,6 +162,149 @@ exports.getMe = async (req, res, next) => {
                 user,
             },
         });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// @desc    Verify Email
+// @route   POST /api/auth/verify-email
+// @access  Public
+exports.verifyEmail = async (req, res, next) => {
+    try {
+        const { email, code } = req.body;
+
+        if (!email || !code) {
+            return res.status(400).json({ status: 'fail', message: 'Please provide email and code' });
+        }
+
+        const user = await User.findOne({
+            email: email.toLowerCase(),
+            verificationCode: code,
+            verificationCodeExpire: { $gt: Date.now() }
+        }).select('+verificationCode +verificationCodeExpire');
+
+        if (!user) {
+            return res.status(400).json({ status: 'fail', message: 'Invalid or expired token' });
+        }
+
+        user.isVerified = true;
+        user.verificationCode = undefined;
+        user.verificationCodeExpire = undefined;
+        await user.save();
+
+        sendTokenResponse(user, 200, res);
+
+    } catch (error) {
+        next(error);
+    }
+};
+
+// @desc    Forgot Password
+// @route   POST /api/auth/forgotpassword
+// @access  Public
+exports.forgotPassword = async (req, res, next) => {
+    try {
+        const { email } = req.body;
+        console.log(`Forgot Password requested for: ${email}`);
+
+        const user = await User.findOne({ email: email.toLowerCase() });
+
+        if (!user) {
+            console.log('User not found');
+            return res.status(404).json({ status: 'fail', message: 'There is no user with that email' });
+        }
+
+        const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+        const verificationCodeExpire = Date.now() + 10 * 60 * 1000; // 10 mins
+
+        user.verificationCode = verificationCode;
+        user.verificationCodeExpire = verificationCodeExpire;
+        await user.save({ validateBeforeSave: false });
+        console.log(`Verification code generated for ${user.email}: ${verificationCode}`);
+
+        const message = `
+        <h1>Password Reset</h1>
+        <p>Your password reset code is: <strong>${verificationCode}</strong></p>
+        <p>This code will expire in 10 minutes.</p>
+        `;
+
+        try {
+            await sendEmail({
+                email: user.email,
+                subject: 'OmniHub Password Reset Token',
+                message,
+            });
+            console.log('Email sent successfully');
+
+            res.status(200).json({
+                status: 'success',
+                message: 'Reset token sent to email',
+            });
+        } catch (err) {
+            console.error('Email send warning:', err);
+            user.verificationCode = undefined;
+            user.verificationCodeExpire = undefined;
+            await user.save({ validateBeforeSave: false });
+            return next(new Error('Email could not be sent'));
+        }
+
+    } catch (error) {
+        console.error('Forgot Password Critical Error:', error);
+        next(error);
+    }
+};
+
+// @desc    Reset Password
+// @route   PUT /api/auth/resetpassword
+// @access  Public
+exports.resetPassword = async (req, res, next) => {
+    try {
+        const { email, code, password } = req.body;
+
+        const user = await User.findOne({
+            email: email.toLowerCase(),
+            verificationCode: code,
+            verificationCodeExpire: { $gt: Date.now() }
+        }).select('+verificationCode +verificationCodeExpire');
+
+        if (!user) {
+            return res.status(400).json({ status: 'fail', message: 'Invalid or expired token' });
+        }
+
+        user.password = password;
+        user.isVerified = true; // Implicitly verify user since they verified email OTP
+        user.verificationCode = undefined;
+        user.verificationCodeExpire = undefined;
+        await user.save({ validateBeforeSave: false }); // Bypass validation for legacy/incomplete users
+
+        console.log(`Password reset successfully for: ${user.email}`);
+        sendTokenResponse(user, 200, res);
+
+    } catch (error) {
+        console.error('Reset Password Error:', error);
+        next(error);
+    }
+};
+
+// @desc    Change Password
+// @route   PUT /api/auth/changepassword
+// @access  Private
+exports.changePassword = async (req, res, next) => {
+    try {
+        const { currentPassword, newPassword } = req.body;
+
+        const user = await User.findById(req.user.id).select('+password');
+
+        if (!(await user.matchPassword(currentPassword))) {
+            return res.status(401).json({ status: 'fail', message: 'Incorrect current password' });
+        }
+
+        user.password = newPassword;
+        await user.save();
+
+        sendTokenResponse(user, 200, res);
+
     } catch (error) {
         next(error);
     }
