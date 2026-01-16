@@ -79,10 +79,11 @@ exports.signup = async (req, res, next) => {
                 message: 'Verification code sent to email',
             });
         } catch (emailError) {
-            // Rollback user creation if email fails (optional but good practice)
-            // await User.findByIdAndDelete(user._id); 
-            // keeping it simple for now as requested user might want to resend
-            return next(new Error('Email could not be sent'));
+            // Rollback user creation if email fails
+            await User.findByIdAndDelete(user._id);
+            console.error('Signup Verification Email Failed:', emailError);
+            // Return specific error to help user understand (e.g., Sandbox limitation)
+            return next(new Error('Email could not be sent: ' + emailError.message));
         }
 
     } catch (error) {
