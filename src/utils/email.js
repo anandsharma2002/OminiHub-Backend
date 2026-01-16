@@ -1,26 +1,30 @@
-const nodemailer = require('nodemailer');
+const { MailerSend, EmailParams, Sender, Recipient } = require("mailersend");
+
+const mailerSend = new MailerSend({
+    apiKey: process.env.MAILERSEND_API_KEY,
+});
 
 const sendEmail = async (options) => {
-    const transporter = nodemailer.createTransport({
-        host: process.env.SMTP_HOST,
-        port: process.env.SMTP_PORT,
-        secure: false, // true for 465, false for other ports
-        auth: {
-            user: process.env.SMTP_EMAIL,
-            pass: process.env.SMTP_PASSWORD,
-        },
-    });
+    try {
+        const sentFrom = new Sender(process.env.FROM_EMAIL, process.env.FROM_NAME);
+        const recipients = [
+            new Recipient(options.email, options.email) // name as email for now if name not passed
+        ];
 
-    const message = {
-        from: `${process.env.FROM_NAME} <${process.env.FROM_EMAIL}>`,
-        to: options.email,
-        subject: options.subject,
-        html: options.message,
-    };
+        const emailParams = new EmailParams()
+            .setFrom(sentFrom)
+            .setTo(recipients)
+            .setSubject(options.subject)
+            .setHtml(options.message)
+            .setText(options.message.replace(/<[^>]*>?/gm, '')); // Basic strip HTML for text fallback
 
-    const info = await transporter.sendMail(message);
+        await mailerSend.email.send(emailParams);
 
-    console.log('Message sent: %s', info.messageId);
+        console.log(`Email sent successfully to ${options.email}`);
+    } catch (err) {
+        console.error('MailerSend API Error:', err);
+        throw err;
+    }
 };
 
 module.exports = sendEmail;
