@@ -83,7 +83,8 @@ exports.signup = async (req, res, next) => {
             await User.findByIdAndDelete(user._id);
             console.error('Signup Verification Email Failed:', emailError);
             // Return specific error to help user understand (e.g., Sandbox limitation)
-            return next(new Error('Email could not be sent: ' + emailError.message));
+            const errorMessage = emailError?.body?.message || emailError.message || JSON.stringify(emailError);
+            return next(new Error('Email could not be sent: ' + errorMessage));
         }
 
     } catch (error) {

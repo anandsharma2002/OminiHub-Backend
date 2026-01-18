@@ -1,4 +1,6 @@
 const User = require('../models/User');
+const supabase = require('../config/supabase');
+const { v4: uuidv4 } = require('uuid');
 
 // @desc    Search users by username or email
 // @route   GET /api/users/search
@@ -48,6 +50,79 @@ exports.getUserProfile = async (req, res, next) => {
         if (!user) {
             return res.status(404).json({ status: 'fail', message: 'User not found' });
         }
+
+        res.status(200).json({
+            status: 'success',
+            data: {
+                user
+            }
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// @desc    Update user profile
+// @route   PUT /api/users/profile
+// @access  Private
+exports.updateUserProfile = async (req, res, next) => {
+    try {
+        const user = await User.findById(req.user.id);
+
+        if (!user) {
+            return res.status(404).json({ status: 'fail', message: 'User not found' });
+        }
+
+        // Update basic fields
+        if (req.body.firstName) user.firstName = req.body.firstName;
+        if (req.body.lastName) user.lastName = req.body.lastName;
+        if (req.body.bio) user.profile.bio = req.body.bio;
+
+        // Update social links
+        if (req.body.socialLinks) {
+            try {
+                // If it's a string (from FormData), parse it
+                const links = typeof req.body.socialLinks === 'string'
+                    ? JSON.parse(req.body.socialLinks)
+                    : req.body.socialLinks;
+                user.profile.socialLinks = links;
+            } catch (e) {
+                console.error('Error parsing socialLinks:', e);
+                // Maintain existing links or handle error
+            }
+        }
+
+        // Handle Image Upload
+        if (req.file) {
+            const file = req.file;
+            const fileExt = file.originalname.split('.').pop();
+            const fileName = `${user._id}-${Date.now()}.${fileExt}`;
+
+            // Upload to Supabase
+            const { data, error } = await supabase
+                .storage
+                .from('ProfileImages')
+                .upload(fileName, file.buffer, {
+                    contentType: file.mimetype,
+                    upsert: true
+                });
+
+            if (error) {
+                console.error('Supabase Upload Error:', error);
+                // Continue without updating image or return error?
+                // Let's log it and maybe warn user, but try to update other fields.
+            } else {
+                // Get Public URL
+                const { data: { publicUrl } } = supabase
+                    .storage
+                    .from('ProfileImages')
+                    .getPublicUrl(fileName);
+
+                user.profile.image = publicUrl;
+            }
+        }
+
+        await user.save();
 
         res.status(200).json({
             status: 'success',

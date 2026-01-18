@@ -11,3 +11,5 @@ coverage/
 # Production
 build/
 dist/
+
+.env

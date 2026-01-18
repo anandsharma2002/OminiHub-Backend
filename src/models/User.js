@@ -47,7 +47,10 @@ const userSchema = new mongoose.Schema({
             default: 'default.jpg',
         },
         bio: String,
-        socialLinks: [String],
+        socialLinks: [{
+            platform: String,
+            url: String
+        }],
     },
     streaks: {
         current: { type: Number, default: 0 },

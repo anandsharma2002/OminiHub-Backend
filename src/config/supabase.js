@@ -7,6 +7,7 @@ let supabase;
 
 if (!supabaseUrl || !supabaseKey) {
     console.error('⚠️ Supabase Config Missing: SUPABASE_URL or SUPABASE_KEY not found in .env');
+    console.error('👉 ACTION REQUIRED: Go to your Render Dashboard -> Service -> Environment and add SUPABASE_URL and SUPABASE_KEY.');
     // Mock Supabase client to prevent crash
     supabase = {
         storage: {
