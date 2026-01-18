@@ -45,7 +45,7 @@ exports.searchUsers = async (req, res, next) => {
 exports.getUserProfile = async (req, res, next) => {
     try {
         const user = await User.findById(req.params.id)
-            .select('firstName lastName username email role profile createdAt projects'); // Select public fields
+            .select('firstName lastName username email role profile createdAt projects isGithubPublic visibleRepositories'); // Select public fields
 
         if (!user) {
             return res.status(404).json({ status: 'fail', message: 'User not found' });
@@ -128,6 +128,82 @@ exports.updateUserProfile = async (req, res, next) => {
             status: 'success',
             data: {
                 user
+            }
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// @desc    Toggle GitHub visibility
+// @route   PUT /api/users/github-visibility
+// @access  Private
+exports.toggleGithubVisibility = async (req, res, next) => {
+    try {
+        const user = await User.findById(req.user.id);
+
+        if (!user) {
+            return res.status(404).json({ status: 'fail', message: 'User not found' });
+        }
+
+        // Toggle the value
+        user.isGithubPublic = !user.isGithubPublic;
+        await user.save();
+
+        res.status(200).json({
+            status: 'success',
+            data: {
+                isGithubPublic: user.isGithubPublic
+            }
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// @desc    Toggle Repository Visibility
+// @route   PUT /api/users/github-repos
+// @access  Private
+exports.toggleRepoVisibility = async (req, res, next) => {
+    try {
+        const { repoId } = req.body; // Expecting repoId (string)
+
+        if (!repoId) {
+             return res.status(400).json({ status: 'fail', message: 'Repository ID is required' });
+        }
+
+        const user = await User.findById(req.user.id);
+
+        if (!user) {
+            return res.status(404).json({ status: 'fail', message: 'User not found' });
+        }
+
+        // Initialize array if undefined
+        if (!user.visibleRepositories) {
+            user.visibleRepositories = [];
+        }
+
+        const index = user.visibleRepositories.indexOf(repoId);
+
+        if (index > -1) {
+            // Repo exists, remove it (Toggle OFF)
+            user.visibleRepositories.splice(index, 1);
+        } else {
+            // Repo doesn't exist, add it (Toggle ON)
+            user.visibleRepositories.push(repoId);
+            // Auto-enable Global Visibility if it was OFF
+            if (!user.isGithubPublic) {
+                user.isGithubPublic = true;
+            }
+        }
+
+        await user.save();
+
+        res.status(200).json({
+            status: 'success',
+            data: {
+                visibleRepositories: user.visibleRepositories,
+                isGithubPublic: user.isGithubPublic
             }
         });
     } catch (error) {

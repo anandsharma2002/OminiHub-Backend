@@ -21,4 +21,10 @@ router.get('/:id/profile', protect, userController.getUserProfile);
 // Update user profile (Private)
 router.put('/profile', protect, upload.single('profileImage'), userController.updateUserProfile);
 
+// Toggle GitHub Visibility (Private)
+router.put('/github-visibility', protect, userController.toggleGithubVisibility);
+
+// Toggle Repository Visibility (Private)
+router.put('/github-repos', protect, userController.toggleRepoVisibility);
+
 module.exports = router;

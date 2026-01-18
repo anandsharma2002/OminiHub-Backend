@@ -69,6 +69,13 @@ const userSchema = new mongoose.Schema({
         type: String,
         select: false,
     },
+    isGithubPublic: {
+        type: Boolean,
+        default: true,
+    },
+    visibleRepositories: [{
+        type: String, // Storing Repository IDs or Full Names
+    }],
     verificationCodeExpire: {
         type: Date,
         select: false,
