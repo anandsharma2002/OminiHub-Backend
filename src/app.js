@@ -7,6 +7,8 @@ const authRoutes = require('./routes/auth.routes');
 const docRoutes = require('./routes/doc.routes');
 const userRoutes = require('./routes/user.routes');
 const githubRoutes = require('./routes/github.routes');
+const socialRoutes = require('./routes/social.routes');
+const notificationRoutes = require('./routes/notification.routes');
 
 const app = express();
 
@@ -25,6 +27,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/docs', docRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/github', githubRoutes);
+app.use('/api/social', socialRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // 404 Handler
 app.use((req, res, next) => {

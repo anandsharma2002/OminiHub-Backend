@@ -45,7 +45,7 @@ exports.searchUsers = async (req, res, next) => {
 exports.getUserProfile = async (req, res, next) => {
     try {
         const user = await User.findById(req.params.id)
-            .select('firstName lastName username email role profile createdAt projects isGithubPublic visibleRepositories'); // Select public fields
+            .select('firstName lastName username email role profile createdAt projects isGithubPublic visibleRepositories followers following'); // Select public fields
 
         if (!user) {
             return res.status(404).json({ status: 'fail', message: 'User not found' });
@@ -169,7 +169,7 @@ exports.toggleRepoVisibility = async (req, res, next) => {
         const { repoId } = req.body; // Expecting repoId (string)
 
         if (!repoId) {
-             return res.status(400).json({ status: 'fail', message: 'Repository ID is required' });
+            return res.status(400).json({ status: 'fail', message: 'Repository ID is required' });
         }
 
         const user = await User.findById(req.user.id);
