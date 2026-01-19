@@ -14,7 +14,7 @@ const initializeSocket = (socketIoInstance) => {
         // Authentication Middleware for Socket
         try {
             const token = socket.handshake.auth.token || socket.handshake.query.token;
-            
+
             if (!token) {
                 return next(new Error('Authentication error: Token required'));
             }
@@ -58,6 +58,28 @@ const initializeSocket = (socketIoInstance) => {
         socket.on('leave_entity', (entityId) => {
             console.log(`[Socket] User ${socket.user.username} left entity room: ${entityId}`);
             socket.leave(entityId);
+        });
+
+        // Chat Events
+        socket.on('typing_start', ({ conversationId, recipientId }) => {
+            console.log(`[Socket] User ${socket.user.username} started typing to ${recipientId}`);
+            if (recipientId) {
+                io.to(recipientId).emit('typing_update', {
+                    conversationId,
+                    userId: socket.user._id,
+                    isTyping: true
+                });
+            }
+        });
+
+        socket.on('typing_stop', ({ conversationId, recipientId }) => {
+            if (recipientId) {
+                io.to(recipientId).emit('typing_update', {
+                    conversationId,
+                    userId: socket.user._id,
+                    isTyping: false
+                });
+            }
         });
 
         socket.on('disconnect', () => {

@@ -9,6 +9,7 @@ const userRoutes = require('./routes/user.routes');
 const githubRoutes = require('./routes/github.routes');
 const socialRoutes = require('./routes/social.routes');
 const notificationRoutes = require('./routes/notification.routes');
+const chatRoutes = require('./routes/chat.routes');
 
 const app = express();
 
@@ -29,6 +30,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/github', githubRoutes);
 app.use('/api/social', socialRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/chat', chatRoutes);
 
 // 404 Handler
 app.use((req, res, next) => {
