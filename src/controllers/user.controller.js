@@ -135,6 +135,12 @@ exports.updateUserProfile = async (req, res, next) => {
     }
 };
 
+const { emitToRoom } = require('../socket/socket');
+
+// ... existing imports ...
+
+// ... existing functions ...
+
 // @desc    Toggle GitHub visibility
 // @route   PUT /api/users/github-visibility
 // @access  Private
@@ -149,6 +155,9 @@ exports.toggleGithubVisibility = async (req, res, next) => {
         // Toggle the value
         user.isGithubPublic = !user.isGithubPublic;
         await user.save();
+
+        // Emit socket event to profile room
+        emitToRoom('profile_' + user._id, 'github_update', { userId: user._id });
 
         res.status(200).json({
             status: 'success',
@@ -198,6 +207,9 @@ exports.toggleRepoVisibility = async (req, res, next) => {
         }
 
         await user.save();
+
+        // Emit socket event
+        emitToRoom('profile_' + user._id, 'github_update', { userId: user._id });
 
         res.status(200).json({
             status: 'success',

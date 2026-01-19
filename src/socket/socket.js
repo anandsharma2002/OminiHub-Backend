@@ -36,9 +36,8 @@ const initializeSocket = (socketIoInstance) => {
     });
 
     io.on('connection', (socket) => {
-        console.log(`Socket connected: ${socket.id}, User: ${socket.user.username}`);
-
         const userId = socket.user._id.toString();
+        console.log(`[Socket] Connected: ${socket.id}, User: ${socket.user.username} (${userId})`);
 
         // Add to userSockets map
         if (!userSockets.has(userId)) {
@@ -48,9 +47,21 @@ const initializeSocket = (socketIoInstance) => {
 
         // Join a room named after the userId for easy emitting
         socket.join(userId);
+        console.log(`[Socket] User ${socket.user.username} joined room: ${userId}`);
+
+        // Allow client to join specific entity rooms (e.g. looking at a profile)
+        socket.on('join_entity', (entityId) => {
+            console.log(`[Socket] User ${socket.user.username} joined entity room: ${entityId}`);
+            socket.join(entityId);
+        });
+
+        socket.on('leave_entity', (entityId) => {
+            console.log(`[Socket] User ${socket.user.username} left entity room: ${entityId}`);
+            socket.leave(entityId);
+        });
 
         socket.on('disconnect', () => {
-            console.log(`Socket disconnected: ${socket.id}`);
+            console.log(`[Socket] Disconnected: ${socket.id}`);
             if (userSockets.has(userId)) {
                 userSockets.get(userId).delete(socket.id);
                 if (userSockets.get(userId).size === 0) {
@@ -63,12 +74,23 @@ const initializeSocket = (socketIoInstance) => {
 
 // Helper function to emit event to specific user
 const emitToUser = (userId, event, data) => {
-    if (!io) return;
+    if (!io) {
+        console.error('[Socket] IO not initialized');
+        return;
+    }
+    console.log(`[Socket] Emitting '${event}' to user: ${userId}`);
     // We can simply emit to the room named userId
     io.to(userId.toString()).emit(event, data);
 };
 
+const emitToRoom = (room, event, data) => {
+    if (!io) return;
+    console.log(`[Socket] Emitting '${event}' to room: ${room}`);
+    io.to(room).emit(event, data);
+};
+
 module.exports = {
     initializeSocket,
-    emitToUser
+    emitToUser,
+    emitToRoom
 };

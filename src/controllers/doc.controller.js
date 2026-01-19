@@ -1,6 +1,7 @@
 const supabase = require('../config/supabase');
 const Documentation = require('../models/Documentation');
 const { v4: uuidv4 } = require('uuid');
+const { emitToUser, emitToRoom } = require('../socket/socket');
 
 // @desc    Upload a new document
 // @route   POST /api/docs
@@ -40,6 +41,15 @@ exports.uploadDocument = async (req, res) => {
             fileSize: file.size,
             user: req.user._id,
         });
+
+        // Real-time Update
+        // 1. To Owner (update their Documents list)
+        emitToUser(req.user._id, 'document_update', { action: 'create', doc });
+
+        // 2. If Public, To Profile Viewers
+        if (doc.privacy === 'public') {
+            emitToRoom(`profile_${req.user._id}`, 'document_update', { action: 'create', doc });
+        }
 
         res.status(201).json(doc);
 
@@ -98,10 +108,25 @@ exports.updateDocument = async (req, res) => {
             return res.status(401).json({ message: 'Not authorized' });
         }
 
+        const wasPublic = doc.privacy === 'public';
+
         doc = await Documentation.findByIdAndUpdate(req.params.id, req.body, {
             new: true,
             runValidators: true,
         });
+
+        const isPublic = doc.privacy === 'public';
+
+        // Real-time Update
+        // 1. To Owner (ALWAYS)
+        emitToUser(req.user._id, 'document_update', { action: 'update', doc });
+
+        // 2. To Profile Viewers (If it WAS public OR IS public)
+        // If it was public and now private -> Update needed to remove it from view
+        // If it was private and now public -> Update needed to add it to view
+        if (wasPublic || isPublic) {
+            emitToRoom(`profile_${req.user._id}`, 'document_update', { action: 'update', docId: doc._id });
+        }
 
         res.json(doc);
     } catch (error) {
@@ -137,8 +162,20 @@ exports.deleteDocument = async (req, res) => {
             // Let's fail safe, but if file doesn't exist just proceed.
         }
 
+        const wasPublic = doc.privacy === 'public';
+        const docId = doc._id;
+        const ownerId = doc.user;
+
         // 2. Delete from DB
         await doc.deleteOne();
+
+        // Real-time Update
+        emitToUser(ownerId, 'document_update', { action: 'delete', docId });
+
+        if (wasPublic) {
+            emitToRoom(`profile_${ownerId}`, 'document_update', { action: 'delete', docId });
+        }
+
 
         res.json({ message: 'Document removed' });
     } catch (error) {

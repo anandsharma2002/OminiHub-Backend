@@ -1,7 +1,7 @@
 const User = require('../models/User');
 const FollowRequest = require('../models/FollowRequest');
 const Notification = require('../models/Notification');
-const { emitToUser } = require('../socket/socket');
+const { emitToUser, emitToRoom } = require('../socket/socket');
 
 // @desc    Send a follow request
 // @route   POST /api/social/follow/:id
@@ -37,7 +37,6 @@ exports.sendFollowRequest = async (req, res, next) => {
                 return res.status(400).json({ status: 'fail', message: 'Follow request already pending' });
             } else {
                 // If status is 'accepted' or 'rejected', delete it to allow new request
-                // (This handles the unique index constraint on requester+recipient)
                 await FollowRequest.findByIdAndDelete(existingRequest._id);
             }
         }
@@ -73,8 +72,6 @@ exports.sendFollowRequest = async (req, res, next) => {
     }
 };
 
-// ... (respondToFollowRequest, getFollowers, getFollowing, getFollowStatus omitted - no changes needed) ...
-
 // @desc    Unfollow a user
 // @route   POST /api/social/follow/:id/unfollow
 // @access  Private
@@ -90,7 +87,7 @@ exports.unfollowUser = async (req, res, next) => {
 
         const requester = await User.findById(requesterId);
 
-        // Remove from recipient's followers (Mongoose pull handles casting)
+        // Remove from recipient's followers
         recipient.followers.pull(requesterId);
         await recipient.save();
 
@@ -106,7 +103,11 @@ exports.unfollowUser = async (req, res, next) => {
 
         // Emit updates
         emitToUser(recipientId, 'follow_update', { userId: requesterId });
-        emitToUser(requesterId, 'follow_update', { userId: recipientId }); // Though they triggered it, good for consistency if multi-tab
+        emitToUser(requesterId, 'follow_update', { userId: recipientId });
+
+        // Broadcast to profile viewers
+        emitToRoom(`profile_${recipientId}`, 'follow_update', { userId: recipientId });
+        emitToRoom(`profile_${requesterId}`, 'follow_update', { userId: requesterId });
 
         res.status(200).json({
             status: 'success',
@@ -142,7 +143,6 @@ exports.removeFollower = async (req, res, next) => {
         await follower.save();
 
         // CRITICAL: Delete the associated FollowRequest so they can request again
-        // Here requester = followerId, recipient = currentUserId
         await FollowRequest.findOneAndDelete({
             requester: followerId,
             recipient: currentUserId
@@ -150,6 +150,10 @@ exports.removeFollower = async (req, res, next) => {
 
         // Emit updates to the removed follower
         emitToUser(followerId, 'follow_update', { userId: currentUserId });
+
+        // Broadcast to profile viewers
+        emitToRoom(`profile_${currentUserId}`, 'follow_update', { userId: currentUserId });
+        emitToRoom(`profile_${followerId}`, 'follow_update', { userId: followerId });
 
         res.status(200).json({
             status: 'success',
@@ -217,6 +221,10 @@ exports.respondToFollowRequest = async (req, res, next) => {
             // Emit to Requester
             emitToUser(requester._id, 'new_notification', notification);
             emitToUser(requester._id, 'follow_update', { userId: userId });
+
+            // Broadcast to profile viewers (Requester and Recipient)
+            emitToRoom(`profile_${userId}`, 'follow_update', { userId: userId });
+            emitToRoom(`profile_${requester._id}`, 'follow_update', { userId: requester._id });
         }
 
         // Emit to Recipient (current user) to update their list/counts
@@ -311,5 +319,3 @@ exports.getFollowStatus = async (req, res, next) => {
         next(error);
     }
 };
-
-
