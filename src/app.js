@@ -10,6 +10,9 @@ const githubRoutes = require('./routes/github.routes');
 const socialRoutes = require('./routes/social.routes');
 const notificationRoutes = require('./routes/notification.routes');
 const chatRoutes = require('./routes/chat.routes');
+const projectRoutes = require('./routes/project.routes');
+const taskRoutes = require('./routes/task.routes');
+const boardRoutes = require('./routes/board.routes');
 
 const app = express();
 
@@ -31,6 +34,9 @@ app.use('/api/github', githubRoutes);
 app.use('/api/social', socialRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api/projects', projectRoutes);
+app.use('/api/tasks', taskRoutes);
+app.use('/api/board', boardRoutes);
 
 // 404 Handler
 app.use((req, res, next) => {

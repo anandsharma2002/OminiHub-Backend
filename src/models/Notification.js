@@ -13,7 +13,7 @@ const notificationSchema = new mongoose.Schema({
     },
     type: {
         type: String,
-        enum: ['follow_request', 'follow_accepted'],
+        enum: ['follow_request', 'follow_accepted', 'project_invite', 'project_invite_response'],
         required: true
     },
     message: {
@@ -23,6 +23,12 @@ const notificationSchema = new mongoose.Schema({
     isRead: {
         type: Boolean,
         default: false
+    },
+    link: {
+        type: String // Optional link to redirect
+    },
+    metadata: {
+        type: Object // Flexible storage for related IDs
     },
     relatedId: {
         type: mongoose.Schema.Types.ObjectId

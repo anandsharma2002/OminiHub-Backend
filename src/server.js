@@ -27,6 +27,9 @@ const startServer = async () => {
     // Setup Socket Logic
     initializeSocket(io);
 
+    // Make io accessible to our router
+    app.set('io', io);
+
     // Supabase connection is pool-based, so it lazy-connects, but we initialized it.
 
     server.listen(PORT, () => {

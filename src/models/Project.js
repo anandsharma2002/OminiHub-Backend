@@ -26,10 +26,26 @@ const projectSchema = new mongoose.Schema({
         ref: 'User',
         required: true,
     },
-    members: [{
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
+    contributors: [{
+        user: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'User',
+        },
+        role: {
+            type: String,
+            enum: ['Admin', 'Editor', 'Viewer'],
+            default: 'Editor',
+        },
+        status: {
+            type: String,
+            enum: ['Pending', 'Accepted', 'Ignored'],
+            default: 'Pending',
+        },
+        permissions: [String] // Optional: granular permissions
     }],
+    githubRepo: {
+        type: String, // Full repo name e.g., "owner/repo"
+    },
     tasks: [{
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Task',

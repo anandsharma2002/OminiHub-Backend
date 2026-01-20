@@ -45,6 +45,26 @@ const taskSchema = new mongoose.Schema({
     aiSuggestions: {
         type: String, // Stores AI analysis
     },
+    // Hierarchy Fields
+    parentTask: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Task',
+        default: null,
+    },
+    type: {
+        type: String,
+        enum: ['Heading', 'Sub-Heading', 'Task'],
+        default: 'Task',
+    },
+    // Ticket Board Fields
+    isTicket: {
+        type: Boolean,
+        default: false,
+    },
+    ticket: { // Link to the Ticket document if it exists
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Ticket',
+    }
 }, {
     timestamps: true,
 });
