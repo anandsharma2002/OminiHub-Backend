@@ -37,6 +37,8 @@ app.use('/api/chat', chatRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/board', boardRoutes);
+const geminiRoutes = require('./routes/gemini.routes');
+app.use('/api/gemini', geminiRoutes);
 
 // 404 Handler
 app.use((req, res, next) => {
