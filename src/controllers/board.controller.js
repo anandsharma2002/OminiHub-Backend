@@ -45,6 +45,12 @@ exports.createColumn = async (req, res) => {
 
         const column = new BoardColumn({ project: projectId, name, order });
         await column.save();
+
+        const io = req.app.get('io');
+        if (io) {
+            io.emit('column_created', column);
+        }
+
         res.status(201).send(column);
     } catch (error) {
         res.status(400).send({ message: error.message });
@@ -99,6 +105,8 @@ exports.createTicket = async (req, res) => {
         const io = req.app.get('io');
         if (io) {
             io.emit('task_updated', task);
+            const populatedTicket = await Ticket.findById(ticket._id).populate('task').populate('assignee');
+            io.emit('ticket_created', populatedTicket);
         }
 
         res.status(201).send(ticket);
@@ -108,6 +116,7 @@ exports.createTicket = async (req, res) => {
 };
 
 // Move Ticket (Drag & Drop)
+// Move Ticket (Drag & Drop)
 exports.moveTicket = async (req, res) => {
     try {
         const { ticketId, newColumnId, newOrder } = req.body;
@@ -115,10 +124,81 @@ exports.moveTicket = async (req, res) => {
         const ticket = await Ticket.findById(ticketId);
         if (!ticket) return res.status(404).send({ message: 'Ticket not found' });
 
-        ticket.column = newColumnId;
-        ticket.order = newOrder; // Need to handle re-ordering logic for other tickets in same column ideally
+        const oldColumnId = ticket.column.toString();
+        const oldOrder = ticket.order;
+        const projectId = ticket.project;
 
-        await ticket.save();
+        // 1. If moving within the SAME column
+        if (oldColumnId === newColumnId) {
+            if (newOrder > oldOrder) {
+                // Moving down: Decrement order of items in between
+                await Ticket.updateMany(
+                    { column: newColumnId, order: { $gt: oldOrder, $lte: newOrder } },
+                    { $inc: { order: -1 } }
+                );
+            } else if (newOrder < oldOrder) {
+                // Moving up: Increment order of items in between
+                await Ticket.updateMany(
+                    { column: newColumnId, order: { $gte: newOrder, $lt: oldOrder } },
+                    { $inc: { order: 1 } }
+                );
+            }
+            ticket.order = newOrder;
+            await ticket.save();
+        }
+        // 2. Moving to DIFFERENT column
+        else {
+            // A. Remove from OLD column (Decrement order of items below it)
+            await Ticket.updateMany(
+                { column: oldColumnId, order: { $gt: oldOrder } },
+                { $inc: { order: -1 } }
+            );
+
+            // B. Make space in NEW column (Increment order of items at/below insertion point)
+            await Ticket.updateMany(
+                { column: newColumnId, order: { $gte: newOrder } },
+                { $inc: { order: 1 } }
+            );
+
+            // C. Move ticket
+            ticket.column = newColumnId;
+            ticket.order = newOrder;
+            await ticket.save();
+        }
+
+        const io = req.app.get('io');
+        if (io) {
+            // Populate (CRITICAL for frontend crash prevention)
+            const populatedTicket = await Ticket.findById(ticket._id)
+                .populate({
+                    path: 'task',
+                    select: 'title description assignedTo deadline priority status'
+                })
+                .populate('assignee', 'username avatar');
+
+            // Emit updated ticket
+            io.emit('ticket_updated', populatedTicket);
+
+            // Should properly we emit 'tickets_reordered' or just refresh?
+            // Sending 'ticket_updated' for the moved ticket is enough for frontend to put it in place 
+            // IF frontend refetches or the socket event includes context.
+            // But optimal way: frontend needs to know reordering happened.
+            // My frontend listener listens to `ticket_updated`.
+            // But that only updates the single ticket.
+            // It won't update the neighbors who got their `order` changed!
+
+            // Force refetch might be safer, OR broadcast all affected tickets.
+            // Simple approach: Emit 'board_updated' or similar to trigger refetch?
+            // Or just emit all tickets for the project?
+            // Let's rely on frontend logic which did optimistic update correctly. 
+            // BUT if another user is watching, they will see the moved ticket update, but NOT the neighbors shift.
+            // So neighbors will have conflicting orders locally until refetch.
+            // Better: Emit a special event `tickets_reordered` with projectId.
+
+            // To be safe and instant:
+            io.emit('board_refetch_needed', { projectId });
+        }
+
         res.send(ticket);
     } catch (error) {
         res.status(400).send({ message: error.message });
@@ -162,6 +242,11 @@ exports.deleteColumn = async (req, res) => {
 
         await Ticket.deleteMany({ column: columnId });
 
+        const io = req.app.get('io');
+        if (io) {
+            io.emit('column_deleted', { columnId, projectId: column.project });
+        }
+
         res.send({ message: 'Column deleted' });
     } catch (error) {
         res.status(500).send({ message: error.message });
@@ -179,17 +264,13 @@ exports.moveColumn = async (req, res) => {
 
         // Bulk update other columns to maintain order
         if (newOrder > column.order) {
-            // Moving down: shift items between old and new order UP by 1 (actually wait, logic check)
-            // If dragging from index 0 to 2:
-            // 0 (target) -> 2
-            // 1 -> 0 (-1)
-            // 2 -> 1 (-1)
+            // Moving down
             await BoardColumn.updateMany(
                 { project: projectId, order: { $gt: column.order, $lte: newOrder } },
                 { $inc: { order: -1 } }
             );
         } else if (newOrder < column.order) {
-            // Moving up: shift items between new and old order DOWN by 1
+            // Moving up
             await BoardColumn.updateMany(
                 { project: projectId, order: { $gte: newOrder, $lt: column.order } },
                 { $inc: { order: 1 } }
@@ -198,6 +279,13 @@ exports.moveColumn = async (req, res) => {
 
         column.order = newOrder;
         await column.save();
+
+        const io = req.app.get('io');
+        if (io) {
+            // Fetch all columns regarding this project and emit them, or just emit event to refetch
+            const allColumns = await BoardColumn.find({ project: projectId }).sort({ order: 1 });
+            io.emit('columns_reordered', { projectId, columns: allColumns });
+        }
 
         res.send(column);
     } catch (error) {

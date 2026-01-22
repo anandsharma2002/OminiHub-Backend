@@ -11,5 +11,6 @@ router.get('/conversations', chatController.getConversations);
 router.get('/:conversationId/messages', chatController.getMessages);
 router.post('/message', chatController.sendMessage);
 router.put('/:conversationId/seen', chatController.markSeen);
+router.delete('/:conversationId', chatController.deleteConversation);
 
 module.exports = router;

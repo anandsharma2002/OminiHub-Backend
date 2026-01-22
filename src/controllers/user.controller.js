@@ -135,7 +135,7 @@ exports.updateUserProfile = async (req, res, next) => {
     }
 };
 
-const { emitToRoom } = require('../socket/socket');
+const { emitToRoom, emitToUser } = require('../socket/socket');
 
 // ... existing imports ...
 
@@ -156,8 +156,11 @@ exports.toggleGithubVisibility = async (req, res, next) => {
         user.isGithubPublic = !user.isGithubPublic;
         await user.save();
 
-        // Emit socket event to profile room
+        // Emit socket event to profile room (for viewers)
         emitToRoom('profile_' + user._id, 'github_update', { userId: user._id });
+
+        // Emit to the user themselves (for global context updates across tabs)
+        emitToUser(user._id, 'github_update', { userId: user._id });
 
         res.status(200).json({
             status: 'success',
@@ -208,8 +211,11 @@ exports.toggleRepoVisibility = async (req, res, next) => {
 
         await user.save();
 
-        // Emit socket event
+        // Emit socket event to profile room (for viewers)
         emitToRoom('profile_' + user._id, 'github_update', { userId: user._id });
+
+        // Emit to the user themselves (for global context updates across tabs)
+        emitToUser(user._id, 'github_update', { userId: user._id });
 
         res.status(200).json({
             status: 'success',

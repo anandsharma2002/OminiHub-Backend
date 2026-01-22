@@ -125,7 +125,7 @@ exports.updateDocument = async (req, res) => {
         // If it was public and now private -> Update needed to remove it from view
         // If it was private and now public -> Update needed to add it to view
         if (wasPublic || isPublic) {
-            emitToRoom(`profile_${req.user._id}`, 'document_update', { action: 'update', docId: doc._id });
+            emitToRoom(`profile_${req.user._id}`, 'document_update', { action: 'update', doc });
         }
 
         res.json(doc);

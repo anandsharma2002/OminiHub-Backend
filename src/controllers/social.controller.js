@@ -62,6 +62,10 @@ exports.sendFollowRequest = async (req, res, next) => {
         // Real-time Follow Update (to update buttons immediately if they are online)
         emitToUser(recipientId, 'follow_update', { userId: requesterId });
 
+        // Broadcast to profile viewers
+        emitToRoom(`profile_${recipientId}`, 'follow_update', { userId: recipientId });
+        emitToRoom(`profile_${requesterId}`, 'follow_update', { userId: requesterId });
+
         res.status(200).json({
             status: 'success',
             message: 'Follow request sent successfully'

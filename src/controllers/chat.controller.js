@@ -9,7 +9,8 @@ const { emitToRoom, emitToUser } = require('../socket/socket');
 exports.getConversations = async (req, res, next) => {
     try {
         const conversations = await Conversation.find({
-            participants: req.user._id
+            participants: req.user._id,
+            deletedBy: { $ne: req.user._id }
         })
             .populate('participants', 'username firstName lastName profile.image')
             .sort({ 'lastMessage.createdAt': -1 });
@@ -117,6 +118,9 @@ exports.sendMessage = async (req, res, next) => {
         // 4. Update Conversation (Last Message + Unread Count)
         const conversation = await Conversation.findById(chatId);
 
+        // Revive conversation if hidden for anyone
+        conversation.deletedBy = [];
+
         // Identify recipient (the other participant)
         const recipient = conversation.participants.find(p => p.toString() !== req.user._id.toString());
 
@@ -162,8 +166,8 @@ exports.sendMessage = async (req, res, next) => {
 
         res.status(201).json({
             status: 'success',
-            data: { 
-                message, 
+            data: {
+                message,
                 conversationId: chatId,
                 conversation // Return full object
             }
@@ -229,6 +233,33 @@ exports.getUnreadCount = async (req, res, next) => {
             status: 'success',
             data: { count }
         });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// @desc    Delete conversation (Soft delete for user)
+// @route   DELETE /api/chat/:conversationId
+// @access  Private
+exports.deleteConversation = async (req, res, next) => {
+    try {
+        const { conversationId } = req.params;
+
+        const conversation = await Conversation.findById(conversationId);
+        if (!conversation) return res.status(404).json({ message: 'Conversation not found' });
+
+        if (!conversation.participants.includes(req.user._id)) {
+            // Check if user is participant
+            return res.status(403).json({ message: 'Not authorized' });
+        }
+
+        // Add user to deletedBy array (Idempotent)
+        if (!conversation.deletedBy.includes(req.user._id)) {
+            conversation.deletedBy.push(req.user._id);
+            await conversation.save();
+        }
+
+        res.status(200).json({ status: 'success', message: 'Chat deleted' });
     } catch (error) {
         next(error);
     }
