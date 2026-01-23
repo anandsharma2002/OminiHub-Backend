@@ -18,7 +18,11 @@ const startServer = async () => {
     // Initialize Socket.io
     const io = new Server(server, {
         cors: {
-            origin: process.env.CLIENT_URL || "http://localhost:5173", // Allow requests from frontend
+            origin: [
+                process.env.CLIENT_URL,
+                "http://localhost:5173",
+                "http://localhost:3000"
+            ].filter(Boolean), // Remove undefined if CLIENT_URL is missing
             methods: ["GET", "POST"],
             credentials: true
         }
