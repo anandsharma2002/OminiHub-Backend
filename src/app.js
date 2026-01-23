@@ -13,6 +13,7 @@ const chatRoutes = require('./routes/chat.routes');
 const projectRoutes = require('./routes/project.routes');
 const taskRoutes = require('./routes/task.routes');
 const boardRoutes = require('./routes/board.routes');
+const aiRoutes = require('./routes/ai.routes');
 
 const app = express();
 
@@ -37,6 +38,7 @@ app.use('/api/chat', chatRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/board', boardRoutes);
+app.use('/api/v1/ai', aiRoutes);
 
 // 404 Handler
 app.use((req, res, next) => {
