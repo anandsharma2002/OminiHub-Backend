@@ -8,6 +8,8 @@ router.get('/', protect, projectController.getProjects);
 router.get('/invitations', protect, projectController.getInvitations);
 router.post('/invitations/respond', protect, projectController.respondToInvitation);
 router.get('/:id', protect, projectController.getProject);
+router.put('/:id', protect, projectController.updateProject);
+router.delete('/:id', protect, projectController.deleteProject);
 // ...
 router.post('/:id/invite', protect, projectController.inviteUser);
 router.delete('/contributors', protect, projectController.removeContributor);

@@ -202,3 +202,49 @@ exports.getInvitations = async (req, res) => {
         res.status(500).send({ message: error.message });
     }
 };
+
+// Update Project (Owner Only)
+exports.updateProject = async (req, res) => {
+    try {
+        const { name, description, githubRepo, isPublic, projectType, hostedUrl, image } = req.body;
+        const project = await Project.findById(req.params.id);
+
+        if (!project) return res.status(404).send({ message: 'Project not found' });
+
+        if (project.owner.toString() !== req.user._id.toString()) {
+            return res.status(403).send({ message: 'Only owner can update project' });
+        }
+
+        project.name = name || project.name;
+        project.description = description !== undefined ? description : project.description;
+        project.githubRepo = githubRepo !== undefined ? githubRepo : project.githubRepo;
+        project.isPublic = isPublic !== undefined ? isPublic : project.isPublic;
+        project.projectType = projectType || project.projectType;
+        project.hostedUrl = hostedUrl || project.hostedUrl;
+        project.image = image || project.image;
+
+        await project.save();
+        res.send(project);
+    } catch (error) {
+        res.status(400).send({ message: error.message });
+    }
+};
+
+// Delete Project (Owner Only)
+exports.deleteProject = async (req, res) => {
+    try {
+        const project = await Project.findById(req.params.id);
+
+        if (!project) return res.status(404).send({ message: 'Project not found' });
+
+        if (project.owner.toString() !== req.user._id.toString()) {
+            return res.status(403).send({ message: 'Only owner can delete project' });
+        }
+
+        await Project.findByIdAndDelete(req.params.id);
+
+        res.send({ message: 'Project deleted successfully' });
+    } catch (error) {
+        res.status(500).send({ message: error.message });
+    }
+};
