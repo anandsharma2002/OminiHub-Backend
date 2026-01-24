@@ -184,7 +184,7 @@ const toolsImplementation = {
  */
 exports.chatWithAI = async (userPrompt, history = [], user) => {
     try {
-        // Use 'gemini-flash-latest' as it is the only one confirmed to exist for this key (despite low quota)
+        // Use 'gemini-flash-latest' - verified as the ONLY model with non-zero (though low 20/day) limit for this key
         const model = genAI.getGenerativeModel({
             model: "gemini-flash-latest",
             tools: toolsDefinition

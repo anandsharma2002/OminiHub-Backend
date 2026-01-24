@@ -19,7 +19,7 @@ https.get(url, (res) => {
             } else if (response.models) {
                 console.log("Available MOdels:");
                 response.models.forEach(m => {
-                    console.log(`- ${m.name}`);
+                    console.log(`- ${m.name} [${m.supportedGenerationMethods.join(', ')}]`);
                 });
             } else {
                 console.log("Unexpected response structure:", response);
