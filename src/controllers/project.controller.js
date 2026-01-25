@@ -1,11 +1,138 @@
 const Project = require('../models/Project');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
+const BoardColumn = require('../models/BoardColumn');
+const Ticket = require('../models/Ticket');
+const Task = require('../models/Task');
 const { emitToUser } = require('../socket/socket');
 
-// ... (rest of imports or code)
+// Calculate Project Progress Helper
+const calculateProjectProgress = async (projectId) => {
+    // 1. Get Columns and calculate weights
+    const columns = await BoardColumn.find({ project: projectId }).sort({ order: 1 });
+    let columnWeights = {};
+    if (columns.length > 1) {
+        const step = 100 / (columns.length - 1);
+        columns.forEach((col, index) => {
+            columnWeights[col._id.toString()] = index * step;
+        });
+    } else if (columns.length === 1) {
+        columnWeights[columns[0]._id.toString()] = 0;
+    }
 
-// ...
+    // 2. Get All Tasks and Tickets
+    const tasks = await Task.find({ project: projectId });
+    const tickets = await Ticket.find({ project: projectId });
+    const ticketMap = new Map();
+    tickets.forEach(t => ticketMap.set(t.task.toString(), t));
+
+    // 3. Build Parent Map to check for children
+    const parentMap = new Set();
+    tasks.forEach(t => {
+        if (t.parentTask) parentMap.add(t.parentTask.toString());
+    });
+
+    let totalProgressSum = 0;
+    let totalCount = 0;
+    let completedCount = 0;
+    let pendingCount = 0;
+
+    for (const task of tasks) {
+        let isCountable = false;
+
+        // Condition 1: It is a Ticket
+        if (task.isTicket) {
+            isCountable = true;
+        }
+        // Condition 2: It is a Task (non-ticket)
+        else if (task.type === 'Task') {
+            isCountable = true;
+        }
+        // Condition 3: Heading/Sub-Heading with NO children
+        else if ((task.type === 'Heading' || task.type === 'Sub-Heading') && !parentMap.has(task._id.toString())) {
+            isCountable = true;
+        }
+
+        if (isCountable) {
+            totalCount++;
+            let p = 0;
+
+            if (task.isTicket && ticketMap.has(task._id.toString())) {
+                const ticket = ticketMap.get(task._id.toString());
+                const colId = ticket.column.toString();
+                p = columnWeights[colId] !== undefined ? columnWeights[colId] : 0;
+            } else {
+                // Fallback for non-board items
+                if (task.status === 'Done') p = 100;
+                else if (task.status === 'In Progress') p = 50;
+                else p = 0;
+            }
+            totalProgressSum += p;
+            if (p >= 100) completedCount++; // >= 100 just in case
+            else pendingCount++;
+        }
+    }
+
+    return {
+        progress: totalCount > 0 ? Math.round(totalProgressSum / totalCount) : 0,
+        total: totalCount,
+        completed: completedCount,
+        pending: pendingCount
+    };
+};
+
+// Get Projects Progress Summary
+exports.getProjectsProgress = async (req, res) => {
+    try {
+        const projects = await Project.find({
+            $or: [
+                { owner: req.user._id },
+                { 'contributors.user': req.user._id, 'contributors.status': 'Accepted' }
+            ]
+        }).populate('owner', 'username email').sort({ updatedAt: -1 });
+
+        const progressData = await Promise.all(projects.map(async (project) => {
+            const stats = await calculateProjectProgress(project._id);
+            return {
+                ...project.toObject(),
+                progress: stats.progress,
+                stats
+            };
+        }));
+
+        res.send(progressData);
+    } catch (error) {
+        res.status(500).send({ message: error.message });
+    }
+};
+
+// Get Single Project Progress
+exports.getProjectProgress = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const project = await Project.findById(id).select('name description projectType owner contributors');
+
+        if (!project) return res.status(404).send({ message: 'Project not found' });
+
+        // Simple access check (optional depending on UX, but usually dashboard lists accessible designs)
+        // If they called this, they likely have it in their list or it's public? 
+        // Strict check:
+        const isOwner = project.owner.toString() === req.user._id.toString();
+        const isContributor = project.contributors.some(c => c.user.toString() === req.user._id.toString() && c.status === 'Accepted');
+
+        if (!isOwner && !isContributor) return res.status(403).send({ message: 'Access denied' });
+
+        const stats = await calculateProjectProgress(id);
+
+        res.send({
+            ...project.toObject(),
+            progress: stats.progress,
+            stats
+        });
+    } catch (error) {
+        res.status(500).send({ message: error.message });
+    }
+};
 
 
 

@@ -1,7 +1,7 @@
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const Project = require("../models/Project");
 const Task = require("../models/Task");
-const { emitToUser } = require("../socket/socket");
+const { emitToUser, emitToRoom } = require("../socket/socket");
 
 // Initialize Gemini
 // Initialize Gemini moved to function scope for key rotation
@@ -146,7 +146,7 @@ const toolsImplementation = {
             }
 
             // Emit socket event for real-time update
-            emitToUser(user._id.toString(), 'project_updated', project);
+            emitToRoom(`project_${project._id}`, 'project_updated', project);
 
             return {
                 success: true,
@@ -176,7 +176,7 @@ const toolsImplementation = {
             }
 
             // Emit socket event for real-time update
-            emitToUser(user._id.toString(), 'project_deleted', { projectId: project._id });
+            emitToRoom(`project_${project._id}`, 'project_deleted', { projectId: project._id });
 
             return {
                 success: true,
@@ -263,8 +263,10 @@ const toolsImplementation = {
             await project.save();
 
             // 6. Emit Update
-            emitToUser(user._id.toString(), 'project_updated', project);
-            emitToUser(user._id.toString(), 'task_created', newTask);
+            // Broadcast to the project room so all collaborators see it
+            const roomName = `project_${project._id}`;
+            emitToRoom(roomName, 'project_updated', project);
+            emitToRoom(roomName, 'task_created', newTask);
 
             return {
                 success: true,
@@ -313,16 +315,18 @@ const executeWithRetry = async (operation) => {
         try {
             return await operation(apiKey);
         } catch (error) {
-            // Check for Rate Limit / Quota Exceeded errors
-            const isRateLimit = error.message && (
+            // Check for Retryable errors (Rate Limit, Quota, or Blocked/Leaked Key)
+            const isRetryable = error.message && (
                 error.message.includes('429') ||
                 error.message.includes('Quota exceeded') ||
                 error.message.includes('User Rate Limit Exceeded') ||
-                error.message.includes('REVENUE_QUOTA_EXCEEDED')
+                error.message.includes('REVENUE_QUOTA_EXCEEDED') ||
+                error.message.includes('403') ||
+                error.message.includes('leaked')
             );
 
-            if (isRateLimit) {
-                console.warn(`[AI-Service] Key index ${currentKeyIndex} rate limited. Switching to next key...`);
+            if (isRetryable) {
+                console.warn(`[AI-Service] Key index ${currentKeyIndex} failed (${error.message}). Switching to next key...`);
                 attempts++;
 
                 // Move to next key, wrapping around
@@ -330,10 +334,10 @@ const executeWithRetry = async (operation) => {
 
                 // If we have tried all keys, we must fail
                 if (attempts >= totalKeys) {
-                    throw new Error("Daily Quota Exceeded for ALL available API keys. Please try again tomorrow.");
+                    throw new Error("All available API keys failed (Quota Exceeded or Blocked). Please check your keys.");
                 }
             } else {
-                // If it's not a rate limit error (e.g. 400 Bad Request, 500), throw immediately
+                // If it's not a retryable error (e.g. 400 Bad Request, 500), throw immediately
                 throw error;
             }
         }
