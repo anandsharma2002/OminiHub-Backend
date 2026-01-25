@@ -25,7 +25,16 @@ exports.chat = async (req, res) => {
         });
 
     } catch (error) {
-        console.error("AI Controller Error:", error);
+        console.error("AI Controller Error:", error.message);
+
+        if (error.isRateLimit) {
+            return res.status(429).json({
+                success: false,
+                message: error.message, // The friendly message we set in service
+                error: "RateLimitExceeded"
+            });
+        }
+
         res.status(500).json({
             success: false,
             message: "Something went wrong with AI service",

@@ -1,9 +1,10 @@
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const Project = require("../models/Project");
+const Task = require("../models/Task");
 const { emitToUser } = require("../socket/socket");
 
 // Initialize Gemini
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+// Initialize Gemini moved to function scope for key rotation
 
 // Define Tools (Function Definitions for AI)
 const toolsDefinition = [
@@ -70,6 +71,21 @@ const toolsDefinition = [
                     },
                     required: ["name"],
                 },
+            },
+            {
+                name: "addProjectItem",
+                description: "Add a Heading, Sub-Heading, or Task to a project. Handles hierarchy (e.g. 'Add task X under heading Y').",
+                parameters: {
+                    type: "OBJECT",
+                    properties: {
+                        projectName: { type: "STRING", description: "Name of the project." },
+                        itemType: { type: "STRING", description: "Type of item: 'Heading', 'Sub-Heading', or 'Task'." },
+                        content: { type: "STRING", description: "Title/Content of the item." },
+                        parentName: { type: "STRING", description: "Name of the parent Heading/Sub-Heading (if any)." },
+                        parentType: { type: "STRING", description: "Type of the parent (optional hint)." }
+                    },
+                    required: ["projectName", "itemType", "content"]
+                }
             },
         ],
     },
@@ -172,6 +188,155 @@ const toolsImplementation = {
                 message: `Failed to delete project: ${error.message}`
             };
         }
+    },
+    addProjectItem: async (args, user) => {
+        try {
+            const { projectName, itemType, content, parentName, parentType } = args;
+            console.log(`[AI] addProjectItem: Adding ${itemType} '${content}' to '${projectName}' (Parent: ${parentName})`);
+
+            // 1. Find Project
+            const project = await Project.findOne({
+                name: { $regex: new RegExp(`^${projectName}$`, 'i') },
+                owner: user._id
+            });
+
+            if (!project) {
+                return { success: false, message: `Project '${projectName}' not found.` };
+            }
+
+            // 2. Resolve Parent (if applicable)
+            let parentTaskId = null;
+            if (parentName) {
+                const query = {
+                    project: project._id,
+                    title: { $regex: new RegExp(`^${parentName}$`, 'i') }
+                };
+
+                // If adding a Task, parent is likely Sub-Heading (or Heading)
+                // If adding a Sub-Heading, parent MUST be Heading
+                if (itemType === 'Sub-Heading') {
+                    query.type = 'Heading';
+                }
+                // If adding a Task, parent could be Heading or Sub-Heading. 
+                // If parentType hint provided by AI, use it.
+                if (parentType) {
+                    query.type = parentType;
+                }
+
+                const parents = await Task.find(query);
+
+                if (parents.length === 0) {
+                    return {
+                        success: false,
+                        message: `Parent item '${parentName}' not found in project. Please ensure the Heading/Sub-Heading exists.`
+                    };
+                } else if (parents.length > 1) {
+                    // Ambiguity!
+                    const context = parents.map(p => `(Type: ${p.type})`).join(", ");
+                    return {
+                        success: false,
+                        message: `Found multiple items named '${parentName}' ${context}. Please specify which one (e.g. by mentioning its unique parent).`
+                    };
+                }
+
+                parentTaskId = parents[0]._id;
+            }
+
+            // 3. Normalize Item Type
+            // Model expects: 'Heading', 'Sub-Heading', 'Task'
+            let normalizedType = 'Task';
+            if (itemType && itemType.toLowerCase().includes('sub')) normalizedType = 'Sub-Heading';
+            else if (itemType && itemType.toLowerCase().includes('head')) normalizedType = 'Heading';
+
+            // 4. Create Task
+            const newTask = await Task.create({
+                title: content,
+                type: normalizedType,
+                project: project._id,
+                parentTask: parentTaskId,
+                assignedTo: user._id, // Default to owner
+                status: 'To Do'
+            });
+
+            // 5. Link to Project
+            project.tasks.push(newTask._id);
+            await project.save();
+
+            // 6. Emit Update
+            emitToUser(user._id.toString(), 'project_updated', project);
+            emitToUser(user._id.toString(), 'task_created', newTask);
+
+            return {
+                success: true,
+                message: `Added ${normalizedType} '${content}' to project '${project.name}'.`,
+                item: { id: newTask._id, title: newTask.title, type: newTask.type }
+            };
+
+        } catch (error) {
+            console.error("addProjectItem Error:", error);
+            return { success: false, message: `Failed to add item: ${error.message}` };
+        }
+    }
+};
+
+/**
+ * Handles chat with Gemini AI using Function Calling
+ * @param {string} userPrompt - The user's message
+ * @param {Array} history - Chat history
+ * @param {Object} user - The authenticated user object
+ * @returns {Promise<Object>} - AI response
+ */
+// Initialize Keys
+const keys = [
+    process.env.GEMINI_API_KEY,
+    process.env.GEMINI_API_KEY_2,
+    process.env.GEMINI_API_KEY_3,
+    process.env.GEMINI_API_KEY_4,
+    process.env.GEMINI_API_KEY_5
+].filter(Boolean);
+
+let currentKeyIndex = 0;
+
+/**
+ * Execute an AI operation with automatic failover/rotation on Quota Limit (429) errors.
+ * @param {Function} operation - Function that takes (apiKey, modelName) and returns a promise
+ */
+const executeWithRetry = async (operation) => {
+    // Try each key exactly once in a full cycle if needed
+    // We start from currentKeyIndex and can loop through all keys
+    let attempts = 0;
+    const totalKeys = keys.length;
+
+    while (attempts < totalKeys) {
+        const apiKey = keys[currentKeyIndex];
+
+        try {
+            return await operation(apiKey);
+        } catch (error) {
+            // Check for Rate Limit / Quota Exceeded errors
+            const isRateLimit = error.message && (
+                error.message.includes('429') ||
+                error.message.includes('Quota exceeded') ||
+                error.message.includes('User Rate Limit Exceeded') ||
+                error.message.includes('REVENUE_QUOTA_EXCEEDED')
+            );
+
+            if (isRateLimit) {
+                console.warn(`[AI-Service] Key index ${currentKeyIndex} rate limited. Switching to next key...`);
+                attempts++;
+
+                // Move to next key, wrapping around
+                currentKeyIndex = (currentKeyIndex + 1) % totalKeys;
+
+                // If we have tried all keys, we must fail
+                if (attempts >= totalKeys) {
+                    throw new Error("Daily Quota Exceeded for ALL available API keys. Please try again tomorrow.");
+                }
+            } else {
+                // If it's not a rate limit error (e.g. 400 Bad Request, 500), throw immediately
+                throw error;
+            }
+        }
     }
 };
 
@@ -183,15 +348,17 @@ const toolsImplementation = {
  * @returns {Promise<Object>} - AI response
  */
 exports.chatWithAI = async (userPrompt, history = [], user) => {
-    try {
-        // Use 'gemini-flash-latest' - verified as the ONLY model with non-zero (though low 20/day) limit for this key
+    return executeWithRetry(async (apiKey) => {
+        const genAI = new GoogleGenerativeAI(apiKey);
+
+        // Use 'gemini-flash-latest' which is verified to be in the User's model list
+        // (gemini-1.5-flash was returning 404)
         const model = genAI.getGenerativeModel({
             model: "gemini-flash-latest",
             tools: toolsDefinition
         });
 
-        // Sanitize history: Gemini requires the first message to be from 'user'
-        // If the first message is from 'model' (e.g. welcome message), remove it.
+        // Sanitize history
         let validHistory = [...history];
         while (validHistory.length > 0 && validHistory[0].role !== 'user') {
             validHistory.shift();
@@ -217,11 +384,10 @@ exports.chatWithAI = async (userPrompt, history = [], user) => {
 
             console.log(`[AI] Triggering Tool: ${functionName}`);
 
-            // Execute the Tool safely
             if (toolsImplementation[functionName]) {
                 const toolResult = await toolsImplementation[functionName](args, user);
 
-                // Send tool result back to AI to generate natural language response
+                // Send tool result back to AI
                 const result2 = await chat.sendMessage([
                     {
                         functionResponse: {
@@ -238,13 +404,20 @@ exports.chatWithAI = async (userPrompt, history = [], user) => {
             }
         }
 
-        // Normal text response
         return {
             text: response.text()
         };
+    }).catch(error => {
+        // Final error handler to format messages as before
+        console.error("AI Service Final Error:", error.message);
 
-    } catch (error) {
-        console.error("AI Service Error Details:", JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
-        throw error; // Throw original error to see details in caller
-    }
+        // Enhance error message for user
+        if (error.message.includes('Daily Quota Exceeded')) {
+            const rateLimitError = new Error("System is currently at maximum capacity (All Keys Exhausted). Please try again later.");
+            rateLimitError.isRateLimit = true;
+            throw rateLimitError;
+        }
+
+        throw error;
+    });
 };
