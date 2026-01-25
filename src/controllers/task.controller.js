@@ -33,6 +33,10 @@ exports.getProjectTasks = async (req, res) => {
     try {
         const tasks = await Task.find({ project: req.params.projectId })
             .populate('assignedTo', 'username avatar')
+            .populate({
+                path: 'ticket',
+                populate: { path: 'column', select: 'name' }
+            })
             .sort({ createdAt: 1 }); // Or sort by order if implementing drag ranking in list
 
         // Frontend will handle the hierarchy construction
