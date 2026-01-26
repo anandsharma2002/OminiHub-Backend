@@ -1,6 +1,7 @@
 const Task = require('../models/Task');
 const Project = require('../models/Project');
 const Ticket = require('../models/Ticket');
+const { emitToRoom } = require('../socket/socket');
 
 // Create a new task (Heading, Sub-Heading, or Task)
 exports.createTask = async (req, res) => {
@@ -19,8 +20,8 @@ exports.createTask = async (req, res) => {
 
         await task.save();
 
-        const io = req.app.get('io');
-        io.emit('task_created', task);
+        // Broadcast to project room
+        emitToRoom(`project_${projectId}`, 'task_created', task);
 
         res.status(201).send(task);
     } catch (error) {
@@ -75,9 +76,9 @@ exports.updateTask = async (req, res) => {
                     const updatedTicket = await Ticket.findOneAndUpdate({ task: task._id }, ticketUpdates, { new: true })
                         .populate('assignee')
                         .populate('task');
-                    const io = req.app.get('io');
-                    if (io && updatedTicket) {
-                        io.emit('ticket_updated', updatedTicket);
+
+                    if (updatedTicket) {
+                        emitToRoom(`project_${task.project}`, 'ticket_updated', updatedTicket);
                     }
                 } catch (err) {
                     console.error("Ticket sync error:", err);
@@ -85,8 +86,7 @@ exports.updateTask = async (req, res) => {
             }
         }
 
-        const io = req.app.get('io');
-        io.emit('task_updated', task);
+        emitToRoom(`project_${task.project}`, 'task_updated', task);
 
         res.send(task);
     } catch (error) {
@@ -111,21 +111,13 @@ exports.deleteTask = async (req, res) => {
         // Delete associated tickets
         await Ticket.deleteMany({ task: { $in: taskIdsToDelete } });
 
-        const io = req.app.get('io');
         // Emit for main task
-        io.emit('task_deleted', { taskId: task._id, projectId: task.project });
+        emitToRoom(`project_${task.project}`, 'task_deleted', { taskId: task._id, projectId: task.project });
+
         // Emit for subtasks if any
         subtasks.forEach(sub => {
-            io.emit('task_deleted', { taskId: sub._id, projectId: sub.project });
+            emitToRoom(`project_${sub.project}`, 'task_deleted', { taskId: sub._id, projectId: sub.project });
         });
-
-        // Also emit ticket_deleted just in case board listens to it (or future proofing)
-        // We can't easily get deleted ticket IDs without querying first, but typically board will reload or filter out tickets where task is null? 
-        // Actually, if we delete the ticket document, the board won't see it on refresh. 
-        // Real-time: The board needs to know a ticket is gone. 
-        // Let's emit a generic board_update or specific ticket_deleted if we knew the IDs.
-        // For now, let's rely on standard refresh or if Board listens to task_deleted?
-        // I will add 'board_updated' emission if helpful, but let's stick to cleaning DB first.
 
         res.send(task);
     } catch (error) {

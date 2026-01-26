@@ -1,6 +1,8 @@
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const Project = require("../models/Project");
 const Task = require("../models/Task");
+const BoardColumn = require("../models/BoardColumn");
+const Ticket = require("../models/Ticket");
 const { emitToUser, emitToRoom } = require("../socket/socket");
 
 // Initialize Gemini
@@ -262,11 +264,51 @@ const toolsImplementation = {
             project.tasks.push(newTask._id);
             await project.save();
 
+            // 5b. Auto-create Ticket for the Board (if it's a Task)
+            // Headings usually don't need tickets unless specified. Let's assume only normalizedType === 'Task' gets a ticket.
+            let ticket = null;
+            if (normalizedType === 'Task') {
+                // Find first column
+                let firstCol = await BoardColumn.findOne({ project: project._id }).sort({ order: 1 });
+                // If no columns, create defaults
+                if (!firstCol) {
+                    const defaultCols = [
+                        { project: project._id, name: 'Start', order: 0, isDefault: true },
+                        { project: project._id, name: 'In Progress', order: 1 },
+                        { project: project._id, name: 'Closed', order: 2, isDefault: true }
+                    ];
+                    const createdCols = await BoardColumn.insertMany(defaultCols);
+                    firstCol = createdCols.find(c => c.order === 0) || createdCols[0];
+                }
+
+                ticket = await Ticket.create({
+                    task: newTask._id,
+                    project: project._id,
+                    column: firstCol._id,
+                    assignee: newTask.assignedTo,
+                    deadline: newTask.deadline,
+                    priority: newTask.priority || 'Medium'
+                });
+
+                // Update task to reflect ticket existence
+                newTask.isTicket = true;
+                newTask.ticket = ticket._id;
+                await newTask.save();
+            }
+
             // 6. Emit Update
             // Broadcast to the project room so all collaborators see it
             const roomName = `project_${project._id}`;
             emitToRoom(roomName, 'project_updated', project);
             emitToRoom(roomName, 'task_created', newTask);
+
+            if (ticket) {
+                // Populate ticket for frontend
+                const populatedTicket = await Ticket.findById(ticket._id)
+                    .populate('task', 'title description assignedTo deadline priority status type')
+                    .populate('assignee', 'username avatar');
+                emitToRoom(roomName, 'ticket_created', populatedTicket);
+            }
 
             return {
                 success: true,
