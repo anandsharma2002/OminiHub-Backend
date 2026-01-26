@@ -1,0 +1,16 @@
+--- Verifying Supabase Config ---
+✅ SUPABASE_URL is present
+✅ SUPABASE_KEY is present
+
+--- Testing Connection (Using Service Role Key) ---
+Client initialized.
+
+--- Testing "ProfileImages" Bucket ---
+✅ Successfully accessed "ProfileImages" bucket.
+✅ ProfileImages Upload Successful: verify_1769426172355.txt
+
+--- Testing "Documents" Bucket ---
+✅ Successfully accessed "Documents" bucket.
+✅ Documents Upload Successful
+ℹ️ Doc Public URL: https://bulcwhspgynooafgcvie.supabase.co/storage/v1/object/public/Documents/verify_doc_1769426172981.txt
+❌ Documents Bucket is PRIVATE (Request Failed: Request failed with status code 400)

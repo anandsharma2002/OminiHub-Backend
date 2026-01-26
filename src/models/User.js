@@ -84,6 +84,10 @@ const userSchema = new mongoose.Schema({
     visibleRepositories: [{
         type: String, // Storing Repository IDs or Full Names
     }],
+    repositoryLinks: [{
+        repoId: String,
+        url: String
+    }],
     verificationCodeExpire: {
         type: Date,
         select: false,

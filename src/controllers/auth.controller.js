@@ -145,7 +145,41 @@ exports.login = async (req, res, next) => {
             return res.status(401).json({ status: 'fail', message: 'Please verify your email to login' });
         }
 
-        console.log('Login successful');
+        // Update Streaks
+        const today = new Date();
+        const lastLogin = user.streaks.lastActive ? new Date(user.streaks.lastActive) : null;
+
+        if (!lastLogin) {
+            // First time login
+            user.streaks.current = 1;
+        } else {
+            const isSameDay = today.toDateString() === lastLogin.toDateString();
+
+            if (!isSameDay) {
+                const yesterday = new Date(today);
+                yesterday.setDate(yesterday.getDate() - 1);
+                const isYesterday = yesterday.toDateString() === lastLogin.toDateString();
+
+                if (isYesterday) {
+                    // Consecutive day
+                    user.streaks.current += 1;
+                } else {
+                    // Break in streak
+                    user.streaks.current = 1;
+                }
+            }
+            // If same day, do nothing (keep current streak)
+        }
+
+        // Update Highest Streak
+        if (user.streaks.current > user.streaks.highest) {
+            user.streaks.highest = user.streaks.current;
+        }
+
+        user.streaks.lastActive = today;
+        await user.save({ validateBeforeSave: false });
+
+        console.log(`Login successful. Streak: ${user.streaks.current}, Max: ${user.streaks.highest}`);
         sendTokenResponse(user, 200, res);
     } catch (error) {
         next(error);
