@@ -4,7 +4,7 @@ const Notification = require('../models/Notification');
 const BoardColumn = require('../models/BoardColumn');
 const Ticket = require('../models/Ticket');
 const Task = require('../models/Task');
-const { emitToUser } = require('../socket/socket');
+const { emitToUser, emitToRoom } = require('../socket/socket');
 
 // Calculate Project Progress Helper
 const calculateProjectProgress = async (projectId) => {
@@ -145,8 +145,13 @@ exports.createProject = async (req, res) => {
             description,
             githubRepo,
             owner: req.user._id,
+            contributors: [{ user: req.user._id, role: 'Admin', status: 'Accepted' }]
         });
         await project.save();
+
+        // Emit to owner (redundant since they get response, but good for real-time lists in other tabs)
+        emitToUser(req.user._id, 'project_created', project);
+
         res.status(201).send(project);
     } catch (error) {
         res.status(400).send({ message: error.message });
@@ -231,9 +236,9 @@ exports.inviteUser = async (req, res) => {
         await notification.populate('sender', 'username profile firstName lastName');
         emitToUser(userId, 'new_notification', notification);
 
-        // Emit Project Update to Owner (to see Pending status immediately) and Invitee
-        emitToUser(project.owner, 'project_updated', { projectId: project._id });
-        emitToUser(userId, 'project_updated', { projectId: project._id });
+        // Emit Project Update to Project Room (so owner sees pending immediately)
+        // And notify invitee maybe? Invitee won't be in room yet.
+        emitToRoom(`project_${project._id}`, 'project_updated', project);
 
         res.send(project);
     } catch (error) {
@@ -278,12 +283,11 @@ exports.respondToInvitation = async (req, res) => {
         await notification.populate('sender', 'username profile firstName lastName');
         emitToUser(project.owner, 'new_notification', notification);
 
-        // Emit socket update to project room or specific users so UI updates in real-time
-        // Assuming there is a room for project or we notify owner directly
-        // Better: emit 'project_updated' to the project room if we had one joined
-        // For now, let's emit to owner and the user responding
-        emitToUser(project.owner, 'project_updated', { projectId: project._id });
-        emitToUser(req.user._id, 'project_updated', { projectId: project._id });
+        // Emit socket update to project room 
+        emitToRoom(`project_${project._id}`, 'project_updated', project);
+
+        // Also emit to the user responding so their list updates
+        emitToUser(req.user._id, 'project_updated', project);
 
         res.send({ message: `Invitation ${status.toLowerCase()}` });
     } catch (error) {
@@ -309,7 +313,9 @@ exports.removeContributor = async (req, res) => {
 
         // Notify removed user
         emitToUser(userId, 'project_updated', { projectId: project._id, action: 'removed' });
-        emitToUser(req.user._id, 'project_updated', { projectId: project._id });
+
+        // Broadcast update to remaining members
+        emitToRoom(`project_${project._id}`, 'project_updated', project);
 
         res.send({ message: 'Contributor removed' });
     } catch (error) {
@@ -351,6 +357,10 @@ exports.updateProject = async (req, res) => {
         project.image = image || project.image;
 
         await project.save();
+
+        // Broadcast update
+        emitToRoom(`project_${project._id}`, 'project_updated', project);
+
         res.send(project);
     } catch (error) {
         res.status(400).send({ message: error.message });
@@ -369,6 +379,9 @@ exports.deleteProject = async (req, res) => {
         }
 
         await Project.findByIdAndDelete(req.params.id);
+
+        // Broadcast deletion
+        emitToRoom(`project_${project._id}`, 'project_deleted', { projectId: project._id });
 
         res.send({ message: 'Project deleted successfully' });
     } catch (error) {

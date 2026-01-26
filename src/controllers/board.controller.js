@@ -1,6 +1,7 @@
 const BoardColumn = require('../models/BoardColumn');
 const Ticket = require('../models/Ticket');
 const Task = require('../models/Task');
+const { emitToRoom } = require('../socket/socket');
 
 // Get Board (Columns + Tickets)
 exports.getBoard = async (req, res) => {
@@ -46,10 +47,7 @@ exports.createColumn = async (req, res) => {
         const column = new BoardColumn({ project: projectId, name, order });
         await column.save();
 
-        const io = req.app.get('io');
-        if (io) {
-            io.emit('column_created', column);
-        }
+        emitToRoom(`project_${projectId}`, 'column_created', column);
 
         res.status(201).send(column);
     } catch (error) {
@@ -102,12 +100,9 @@ exports.createTicket = async (req, res) => {
         task.ticket = ticket._id;
         await task.save();
 
-        const io = req.app.get('io');
-        if (io) {
-            io.emit('task_updated', task);
-            const populatedTicket = await Ticket.findById(ticket._id).populate('task').populate('assignee');
-            io.emit('ticket_created', populatedTicket);
-        }
+        emitToRoom(`project_${projectId}`, 'task_updated', task);
+        const populatedTicket = await Ticket.findById(ticket._id).populate('task').populate('assignee');
+        emitToRoom(`project_${projectId}`, 'ticket_created', populatedTicket);
 
         res.status(201).send(ticket);
     } catch (error) {
@@ -166,38 +161,19 @@ exports.moveTicket = async (req, res) => {
             await ticket.save();
         }
 
-        const io = req.app.get('io');
-        if (io) {
-            // Populate (CRITICAL for frontend crash prevention)
-            const populatedTicket = await Ticket.findById(ticket._id)
-                .populate({
-                    path: 'task',
-                    select: 'title description assignedTo deadline priority status'
-                })
-                .populate('assignee', 'username avatar');
+        // Populate (CRITICAL for frontend crash prevention)
+        const populatedTicket = await Ticket.findById(ticket._id)
+            .populate({
+                path: 'task',
+                select: 'title description assignedTo deadline priority status'
+            })
+            .populate('assignee', 'username avatar');
 
-            // Emit updated ticket
-            io.emit('ticket_updated', populatedTicket);
+        // Emit updated ticket
+        emitToRoom(`project_${projectId}`, 'ticket_updated', populatedTicket);
 
-            // Should properly we emit 'tickets_reordered' or just refresh?
-            // Sending 'ticket_updated' for the moved ticket is enough for frontend to put it in place 
-            // IF frontend refetches or the socket event includes context.
-            // But optimal way: frontend needs to know reordering happened.
-            // My frontend listener listens to `ticket_updated`.
-            // But that only updates the single ticket.
-            // It won't update the neighbors who got their `order` changed!
-
-            // Force refetch might be safer, OR broadcast all affected tickets.
-            // Simple approach: Emit 'board_updated' or similar to trigger refetch?
-            // Or just emit all tickets for the project?
-            // Let's rely on frontend logic which did optimistic update correctly. 
-            // BUT if another user is watching, they will see the moved ticket update, but NOT the neighbors shift.
-            // So neighbors will have conflicting orders locally until refetch.
-            // Better: Emit a special event `tickets_reordered` with projectId.
-
-            // To be safe and instant:
-            io.emit('board_refetch_needed', { projectId });
-        }
+        // Emit re-sync signal just in case (optional, relying on optimistic UI usually)
+        emitToRoom(`project_${projectId}`, 'board_refetch_needed', { projectId });
 
         res.send(ticket);
     } catch (error) {
@@ -217,14 +193,10 @@ exports.deleteTicket = async (req, res) => {
 
             // Emit task update so task list sees it's no longer a ticket
             const task = await Task.findById(ticket.task);
-            const io = req.app.get('io');
-            if (io) {
-                io.emit('task_updated', task);
-                io.emit('ticket_deleted', { ticketId: ticket._id, projectId: ticket.project });
-            }
+            emitToRoom(`project_${ticket.project}`, 'task_updated', task);
+            emitToRoom(`project_${ticket.project}`, 'ticket_deleted', { ticketId: ticket._id, projectId: ticket.project });
         } else {
-            const io = req.app.get('io');
-            if (io) io.emit('ticket_deleted', { ticketId: ticket._id, projectId: ticket.project });
+            emitToRoom(`project_${ticket.project}`, 'ticket_deleted', { ticketId: ticket._id, projectId: ticket.project });
         }
 
         res.send({ message: 'Ticket deleted' });
@@ -242,10 +214,7 @@ exports.deleteColumn = async (req, res) => {
 
         await Ticket.deleteMany({ column: columnId });
 
-        const io = req.app.get('io');
-        if (io) {
-            io.emit('column_deleted', { columnId, projectId: column.project });
-        }
+        emitToRoom(`project_${column.project}`, 'column_deleted', { columnId, projectId: column.project });
 
         res.send({ message: 'Column deleted' });
     } catch (error) {
@@ -280,12 +249,9 @@ exports.moveColumn = async (req, res) => {
         column.order = newOrder;
         await column.save();
 
-        const io = req.app.get('io');
-        if (io) {
-            // Fetch all columns regarding this project and emit them, or just emit event to refetch
-            const allColumns = await BoardColumn.find({ project: projectId }).sort({ order: 1 });
-            io.emit('columns_reordered', { projectId, columns: allColumns });
-        }
+        // Fetch all columns regarding this project and emit them, or just emit event to refetch
+        const allColumns = await BoardColumn.find({ project: projectId }).sort({ order: 1 });
+        emitToRoom(`project_${projectId}`, 'columns_reordered', { projectId, columns: allColumns });
 
         res.send(column);
     } catch (error) {

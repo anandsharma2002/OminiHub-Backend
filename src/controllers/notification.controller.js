@@ -1,4 +1,5 @@
 const Notification = require('../models/Notification');
+const { emitToUser } = require('../socket/socket');
 
 // @desc    Get all notifications for current user
 // @route   GET /api/notifications
@@ -44,6 +45,8 @@ exports.markAsRead = async (req, res, next) => {
         notification.isRead = true;
         await notification.save();
 
+        emitToUser(req.user.id, 'notification_read', { notificationId: notification._id });
+
         res.status(200).json({
             status: 'success',
             data: notification
@@ -61,6 +64,8 @@ exports.markAllRead = async (req, res, next) => {
             { recipient: req.user.id, isRead: false },
             { isRead: true }
         );
+
+        emitToUser(req.user.id, 'notifications_all_read', {});
 
         res.status(200).json({
             status: 'success',
