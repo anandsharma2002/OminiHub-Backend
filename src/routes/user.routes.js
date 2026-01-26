@@ -27,4 +27,7 @@ router.put('/github-visibility', protect, userController.toggleGithubVisibility)
 // Toggle Repository Visibility (Private)
 router.put('/github-repos', protect, userController.toggleRepoVisibility);
 
+// Update Repository Hosting Link (Private)
+router.put('/repo-link', protect, userController.updateRepoLink);
+
 module.exports = router;

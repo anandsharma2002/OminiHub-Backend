@@ -145,7 +145,7 @@ exports.createProject = async (req, res) => {
             description,
             githubRepo,
             owner: req.user._id,
-            contributors: [{ user: req.user._id, role: 'Admin', status: 'Accepted' }]
+            contributors: [] // Owner is separate, no need to add to contributors
         });
         await project.save();
 

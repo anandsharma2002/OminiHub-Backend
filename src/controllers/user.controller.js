@@ -228,3 +228,66 @@ exports.toggleRepoVisibility = async (req, res, next) => {
         next(error);
     }
 };
+
+// @desc    Update Repository Hosting Link
+// @route   PUT /api/users/repo-link
+// @access  Private
+exports.updateRepoLink = async (req, res, next) => {
+    try {
+        const { repoId, url } = req.body;
+        console.log(`[RepoLink] Request received. RepoId: ${repoId}, URL: ${url}, UserID: ${req.user.id}`);
+
+        if (!repoId) {
+            return res.status(400).json({ status: 'fail', message: 'Repository ID is required' });
+        }
+
+        const user = await User.findById(req.user.id);
+
+        if (!user) {
+            console.log(`[RepoLink] User not found: ${req.user.id}`);
+            return res.status(404).json({ status: 'fail', message: 'User not found' });
+        }
+
+        // Initialize array if undefined
+        if (!user.repositoryLinks) {
+            user.repositoryLinks = [];
+        }
+
+        console.log(`[RepoLink] Current links before update:`, JSON.stringify(user.repositoryLinks));
+
+        const linkIndex = user.repositoryLinks.findIndex(link => link.repoId === String(repoId));
+        console.log(`[RepoLink] Found existing link index: ${linkIndex}`);
+
+        if (linkIndex > -1) {
+            if (url) {
+                // Update existing link
+                console.log(`[RepoLink] Updating existing link at index ${linkIndex}`);
+                user.repositoryLinks[linkIndex].url = url;
+            } else {
+                // Remove link if url is empty
+                console.log(`[RepoLink] Removing link at index ${linkIndex}`);
+                user.repositoryLinks.splice(linkIndex, 1);
+            }
+        } else if (url) {
+            // Add new link
+            console.log(`[RepoLink] Adding NEW link`);
+            user.repositoryLinks.push({ repoId: String(repoId), url });
+        }
+
+        console.log(`[RepoLink] Links after modification:`, JSON.stringify(user.repositoryLinks));
+
+        user.markModified('repositoryLinks');
+        const savedUser = await user.save();
+        console.log(`[RepoLink] User saved successfully. Saved links:`, JSON.stringify(savedUser.repositoryLinks));
+
+        res.status(200).json({
+            status: 'success',
+            data: {
+                repositoryLinks: user.repositoryLinks
+            }
+        });
+    } catch (error) {
+        console.error(`[RepoLink] Error saving link:`, error);
+        next(error);
+    }
+};
