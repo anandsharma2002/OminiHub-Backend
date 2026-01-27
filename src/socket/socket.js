@@ -49,11 +49,20 @@ const initializeSocket = (socketIoInstance) => {
         socket.join(userId);
         console.log(`[Socket] User ${socket.user.username} joined room: ${userId}`);
 
-        // Allow client to join specific entity rooms (e.g. looking at a profile)
+        // Allows client to join specific entity rooms (e.g. looking at a profile)
         socket.on('join_entity', (entityId) => {
             console.log(`[Socket] User ${socket.user.username} joined entity room: ${entityId}`);
             socket.join(entityId);
         });
+
+        // specific room for admin stats
+        if (socket.user.role === 'SuperAdmin') {
+            socket.join('admin_stats');
+            console.log(`[Socket] SuperAdmin ${socket.user.username} joined admin_stats`);
+        }
+
+        // Emit active user count update to admins
+        io.to('admin_stats').emit('active_users_update', { count: userSockets.size });
 
         socket.on('leave_entity', (entityId) => {
             console.log(`[Socket] User ${socket.user.username} left entity room: ${entityId}`);
@@ -89,6 +98,8 @@ const initializeSocket = (socketIoInstance) => {
                 if (userSockets.get(userId).size === 0) {
                     userSockets.delete(userId);
                 }
+                // Emit update on disconnect
+                io.to('admin_stats').emit('active_users_update', { count: userSockets.size });
             }
         });
     });
@@ -111,8 +122,13 @@ const emitToRoom = (room, event, data) => {
     io.to(room).emit(event, data);
 };
 
+const getActiveUserCount = () => {
+    return userSockets.size;
+};
+
 module.exports = {
     initializeSocket,
     emitToUser,
-    emitToRoom
+    emitToRoom,
+    getActiveUserCount
 };

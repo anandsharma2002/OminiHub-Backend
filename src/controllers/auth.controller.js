@@ -2,6 +2,7 @@ const User = require('../models/User');
 const jwt = require('jsonwebtoken');
 const sendEmail = require('../utils/email');
 const crypto = require('crypto');
+const { emitToRoom } = require('../socket/socket');
 
 // Generate JWT Token
 const signToken = (id) => {
@@ -78,6 +79,9 @@ exports.signup = async (req, res, next) => {
                 status: 'success',
                 message: 'Verification code sent to email',
             });
+
+            // Notify Admin Panel
+            emitToRoom('admin_stats', 'admin_stats_update', {});
         } catch (emailError) {
             // Rollback user creation if email fails
             await User.findByIdAndDelete(user._id);
