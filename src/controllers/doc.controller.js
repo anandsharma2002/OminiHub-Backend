@@ -51,6 +51,9 @@ exports.uploadDocument = async (req, res) => {
             emitToRoom(`profile_${req.user._id}`, 'document_update', { action: 'create', doc });
         }
 
+        // Notify Admin Panel
+        emitToRoom('admin_stats', 'admin_stats_update', {});
+
         res.status(201).json(doc);
 
     } catch (error) {
@@ -175,6 +178,9 @@ exports.deleteDocument = async (req, res) => {
         if (wasPublic) {
             emitToRoom(`profile_${ownerId}`, 'document_update', { action: 'delete', docId });
         }
+
+        // Notify Admin Panel
+        emitToRoom('admin_stats', 'admin_stats_update', {});
 
 
         res.json({ message: 'Document removed' });

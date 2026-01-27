@@ -151,6 +151,8 @@ exports.createProject = async (req, res) => {
 
         // Emit to owner (redundant since they get response, but good for real-time lists in other tabs)
         emitToUser(req.user._id, 'project_created', project);
+        // Notify Admin Panel
+        emitToRoom('admin_stats', 'admin_stats_update', {});
 
         res.status(201).send(project);
     } catch (error) {
@@ -382,6 +384,8 @@ exports.deleteProject = async (req, res) => {
 
         // Broadcast deletion
         emitToRoom(`project_${project._id}`, 'project_deleted', { projectId: project._id });
+        // Notify Admin Panel
+        emitToRoom('admin_stats', 'admin_stats_update', {});
 
         res.send({ message: 'Project deleted successfully' });
     } catch (error) {

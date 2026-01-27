@@ -39,6 +39,7 @@ app.use('/api/projects', projectRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/board', boardRoutes);
 app.use('/api/dashboard', require('./routes/dashboard.routes'));
+app.use('/api/admin', require('./routes/admin.routes'));
 app.use('/api/v1/ai', aiRoutes);
 
 // 404 Handler
